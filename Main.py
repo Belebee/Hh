@@ -1,28 +1,3 @@
-
-import os
-import sys
-import subprocess
-
-def install_if_missing(package):
-    try:
-        __import__(package)
-    except ImportError:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-
-install_if_missing("pip")
-
-packages = [
-    "requests==2.31.0",
-    "python-telegram-bot==20.3", 
-
-]
-
-for package in packages:
-    install_if_missing(package)
-
-os.system("clear")
-
-
 import requests
 import time
 import hashlib
