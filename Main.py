@@ -124,7 +124,7 @@ def get_dexscreener_price(chain_id, contract_address):
             liquidity = pair.get('liquidity')
             if liquidity:
                 liquidity_usd = liquidity.get('usd')
-                if liquidity_usd and liquidity_usd < 300:
+                if liquidity_usd and liquidity_usd < 50:
                     print(f"🔴 Low liquidity USD ({liquidity_usd}). Skipping...")
                     continue
 
@@ -251,7 +251,7 @@ async def check_price_difference(context: CallbackContext):
             continue
 
         spread_without_fee = ((mexc_price - dex_price) / dex_price) * 100
-        if abs(spread_without_fee) <= 5 or abs(spread_without_fee) > 300:
+        if abs(spread_without_fee) <= 5 or abs(spread_without_fee) > 50:
             continue
 
         spread_withdraw = 0.0
