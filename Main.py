@@ -32,25 +32,6 @@ DEX_SWAP_LINKS = {
     "avalanche": "https://traderjoexyz.com/avalanche/trade?outputCurrency={contract}",
     "optimism": "https://app.uniswap.org/#/swap?chain=optimism&outputCurrency={contract}",
     "fantom": "https://spookyswap.finance/swap?outputCurrency={contract}",
-    "cronos": "https://mm.finance/swap?outputCurrency={contract}",
-    "aptos": "https://liquidswap.com/#/swap?outputCurrency={contract}",
-    "sui": "https://suiswap.app/swap?outputCurrency={contract}",
-    "near": "https://app.ref.finance/swap?outputCurrency={contract}",
-    "cosmos": "https://app.osmosis.zone/?outputCurrency={contract}",
-    "klaytn": "https://klayswap.com/exchange/swap?outputCurrency={contract}",
-    "aurora": "https://app.trisolaris.io/swap?outputCurrency={contract}",
-    "zksync": "https://syncswap.xyz/?outputCurrency={contract}",
-    "base": "https://baseswap.fi/bswap?outputCurrency={contract}",
-    "linea": "https://kyberswap.com/swap/linea?outputCurrency={contract}",
-    "mantle": "https://app.fusionx.finance/swap?outputCurrency={contract}",
-    "metis": "https://netswap.io/#/swap?outputCurrency={contract}",
-    "moonbeam": "https://stellaswap.com/swap?outputCurrency={contract}",
-    "moonriver": "https://solarbeam.io/exchange/swap?outputCurrency={contract}",
-    "harmony": "https://app.sushi.com/swap?chainId=1666600000&outputCurrency={contract}",
-    "celo": "https://ubeswap.org/#/swap?outputCurrency={contract}",
-    "gnosis": "https://app.honeyswap.org/#/swap?outputCurrency={contract}",
-    "kava": "https://equilibrefinance.com/swap?outputCurrency={contract}",
-    "okc": "https://www.joyswap.org/#/swap?outputCurrency={contract}"
 }
 
 def create_signature(query_string, secret_key):
@@ -143,7 +124,7 @@ def get_dexscreener_price(chain_id, contract_address):
             liquidity = pair.get('liquidity')
             if liquidity:
                 liquidity_usd = liquidity.get('usd')
-                if liquidity_usd and liquidity_usd < 50:
+                if liquidity_usd and liquidity_usd < 300:
                     print(f"🔴 Low liquidity USD ({liquidity_usd}). Skipping...")
                     continue
 
@@ -270,58 +251,51 @@ async def check_price_difference(context: CallbackContext):
             continue
 
         spread_without_fee = ((mexc_price - dex_price) / dex_price) * 100
-        if abs(spread_without_fee) <= 5 or abs(spread_without_fee) > 100:
+        if abs(spread_without_fee) <= 5 or abs(spread_without_fee) > 300:
             continue
 
+        spread_withdraw = 0.0
         mexc_link = f"https://www.mexc.com/ru-RU/exchange/{symbol}_USDT"
         dex_link = f"https://dexscreener.com/{network}/{contract_address}"
         dex_swap_link = DEX_SWAP_LINKS.get(network, "").format(contract=contract_address)
-        
-        # حساب الفروقات والرسوم
-        difference_buy = ((dex_price - mexc_price_buy) / mexc_price_buy) * 100  # ربح عند الشراء من MEXC والبيع على DEX
-        difference_sell = ((mexc_price_sell - dex_price) / dex_price) * 100  # ربح عند الشراء من DEX والبيع على MEXC
-        
-        # حساب رسوم السحب كنسبة مئوية
-        if dex_price > 0:
-            withdraw_fee_percentage = (withdraw_fee * dex_price / mexc_price_buy) * 100 if mexc_price_buy > 0 else 0
-        else:
-            withdraw_fee_percentage = 0
-        
+        difference = ((mexc_price - dex_price) / dex_price) * 100
+        difference_buy = ((mexc_price_buy - dex_price) / dex_price) * 100
+        difference_sell = ((mexc_price_sell - dex_price) / dex_price) * 100
+
         global show_massage
         if show_massage:
-            if abs(difference_buy) > 799 or abs(difference_sell) > 799:
+            if abs(difference) > 799:
                 continue
-            elif difference_buy >= 10:  # فرصة الشراء من MEXC والبيع على DEX
-                net_profit = difference_buy - withdraw_fee_percentage
-                if contract["withdraw_enable"] and net_profit > 0:
+            elif difference_buy >= 10:  # تغيير من 4% إلى 10%
+                min_amount = (spread_withdraw / abs(difference_buy)) * (100 + abs(difference))
+                if mexc_price > dex_price:
+                    if contract["deposit_enable"]:
+                        message = (
+                            f"📈 **Network**: {network}\n"
+                            f"🔄 **Opportunity**: Buy on DEX → Sell on MEXC\n\n"
+                            f"🔹 **Coin**: {symbol}\n"
+                            f"💵 **MEXC Price**: ${mexc_price:.8f} | [MEXC Link]({mexc_link})\n"
+                            f"📉 **DEX Price**: ${dex_price:.8f} | [DexScreener]({dex_link})\n"
+                            f"🔗 **Swap on DEX**: [Buy {symbol} here]({dex_swap_link})\n"
+                            f"📊 **Difference**: +{difference_buy:.2f}%\n"
+                            f"💰 **Withdrawal Fee**: {withdraw_fee} {symbol}\n"
+                            f"🔑 **Deposit enabled**: {'✅' if contract['deposit_enable'] else '❌'}"
+                        )
+                        await context.bot.send_message(chat_id=ADMIN_ID, text=message, parse_mode='Markdown')
+
+            elif difference_sell <= -10:  # تغيير من -4% إلى -10%
+                min_amount = (spread_withdraw / abs(difference_sell)) * (100 + abs(difference))
+                if contract["withdraw_enable"]:
                     message = (
                         f"📈 **Network**: {network}\n"
                         f"🔄 **Opportunity**: Buy on MEXC → Sell on DEX\n\n"
                         f"🔹 **Coin**: {symbol}\n"
-                        f"💵 **MEXC Buy Price**: ${mexc_price_buy:.8f} | [MEXC Link]({mexc_link})\n"
-                        f"📉 **DEX Sell Price**: ${dex_price:.8f} | [DexScreener]({dex_link})\n"
+                        f"💵 **MEXC Price**: ${mexc_price:.8f} | [MEXC Link]({mexc_link})\n"
+                        f"📉 **DEX Price**: ${dex_price:.8f} | [DexScreener]({dex_link})\n"
                         f"🔗 **Swap on DEX**: [Sell {symbol} here]({dex_swap_link})\n"
-                        f"📊 **Gross Profit**: +{difference_buy:.2f}%\n"
-                        f"💸 **Withdrawal Fee**: {withdraw_fee} {symbol} (~{withdraw_fee_percentage:.2f}%)\n"
-                        f"💰 **Net Profit**: +{net_profit:.2f}%\n"
+                        f"📊 **Difference**: {difference_sell:.2f}%\n"
+                        f"💰 **Withdrawal Fee**: {withdraw_fee} {symbol}\n"
                         f"🔑 **Withdrawal enabled**: {'✅' if contract['withdraw_enable'] else '❌'}"
-                    )
-                    await context.bot.send_message(chat_id=ADMIN_ID, text=message, parse_mode='Markdown')
-
-            elif difference_sell >= 10:  # فرصة الشراء من DEX والبيع على MEXC
-                net_profit = difference_sell - withdraw_fee_percentage
-                if contract["deposit_enable"] and net_profit > 0:
-                    message = (
-                        f"📈 **Network**: {network}\n"
-                        f"🔄 **Opportunity**: Buy on DEX → Sell on MEXC\n\n"
-                        f"🔹 **Coin**: {symbol}\n"
-                        f"💵 **DEX Buy Price**: ${dex_price:.8f} | [DexScreener]({dex_link})\n"
-                        f"📉 **MEXC Sell Price**: ${mexc_price_sell:.8f} | [MEXC Link]({mexc_link})\n"
-                        f"🔗 **Swap on DEX**: [Buy {symbol} here]({dex_swap_link})\n"
-                        f"📊 **Gross Profit**: +{difference_sell:.2f}%\n"
-                        f"💸 **Withdrawal Fee**: {withdraw_fee} {symbol} (~{withdraw_fee_percentage:.2f}%)\n"
-                        f"💰 **Net Profit**: +{net_profit:.2f}%\n"
-                        f"🔑 **Deposit enabled**: {'✅' if contract['deposit_enable'] else '❌'}"
                     )
                     await context.bot.send_message(chat_id=ADMIN_ID, text=message, parse_mode='Markdown')
 
